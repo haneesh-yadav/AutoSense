@@ -1,0 +1,181 @@
+AutoSense — Backend & Simulator
+Files to build next, and the folder structure to put them in
+1. What This Covers
+The React frontend is done. This document lists every file the Backend team (FastAPI + PostgreSQL + WebSocket) and the ECU Simulator need to build next, why each file exists, and how the folders should be organized so the frontend's expectations (REST endpoints + WebSocket messages) are met exactly.
+2. Folder Structure — Backend
+autosense-backend/
+├── .env.example
+├── requirements.txt
+├── docker-compose.yml
+├── Dockerfile
+├── alembic.ini
+├── alembic/
+│   └── versions/
+└── app/
+    ├── main.py
+    ├── config.py
+    ├── database.py
+    ├── models/
+    │   ├── telemetry.py
+    │   ├── fault.py
+    │   └── trip.py
+    ├── schemas/
+    │   ├── telemetry.py
+    │   ├── fault.py
+    │   └── trip.py
+    ├── routers/
+    │   ├── telemetry.py
+    │   ├── trips.py
+    │   ├── auth.py
+    │   └── websocket.py
+    ├── services/
+    │   ├── health_score.py
+    │   ├── alert_engine.py
+    │   ├── notifications.py
+    │   └── broadcast.py
+    ├── auth/
+    │   ├── jwt_handler.py
+    │   └── dependencies.py
+    └── tests/
+        ├── test_telemetry.py
+        └── test_alerts.py
+3. File-by-File Reference — Backend
+Root level
+File / Folder
+Purpose
+Notes
+.env.example
+Template for secrets & config
+DB URL, JWT secret, Twilio keys, Firebase keys
+requirements.txt
+Python dependencies
+fastapi, uvicorn, sqlalchemy, psycopg2, redis, pyjwt, twilio, firebase-admin
+docker-compose.yml
+Spins up API + PostgreSQL + Redis together
+One command: docker-compose up
+Dockerfile
+Packages the FastAPI app into a container
+Used by Render.com for deployment
+alembic.ini / alembic/
+Database migration config & history
+Run: alembic revision --autogenerate
+app/ — core setup
+File / Folder
+Purpose
+Notes
+main.py
+Creates the FastAPI app, mounts routers, starts WebSocket manager
+Entry point run by uvicorn
+config.py
+Loads environment variables into a settings object
+Uses pydantic-settings
+database.py
+SQLAlchemy engine, session, and Base class
+Also enables the TimescaleDB extension on startup
+app/models/ — database tables (SQLAlchemy)
+File / Folder
+Purpose
+Notes
+telemetry.py
+Table storing every reading: speed, RPM, temp, battery, GPS, timestamp
+TimescaleDB hypertable for fast time-range queries
+fault.py
+Table storing fault events and whether they're still active
+Indexed by vehicle + triggered_at
+trip.py
+Table storing one row per completed trip
+distance, avg speed, idle time, fuel used
+app/schemas/ — request/response shapes (Pydantic)
+File / Folder
+Purpose
+Notes
+telemetry.py
+Validates incoming ESP32 data & shapes outgoing API responses
+Mirrors the frontend's TelemetryReading type exactly
+fault.py
+Shapes fault alert payloads sent over REST & WebSocket
+Mirrors the frontend's FaultAlert type
+trip.py
+Shapes trip summary responses
+Mirrors the frontend's TripSummary type
+app/routers/ — API endpoints
+File / Folder
+Purpose
+Notes
+telemetry.py
+POST /api/telemetry (from ESP32), GET /api/telemetry/history (for charts)
+History endpoint powers the frontend's HistoricalCharts
+trips.py
+GET /api/trips, GET /api/trips/{id}
+Powers the frontend's TripSummary card
+auth.py
+POST /api/auth/login, POST /api/auth/register
+Issues JWTs using PyJWT
+websocket.py
+WS /ws/telemetry — pushes live readings & fault events to every connected dashboard
+Matches the frontend's useTelemetryFeed hook exactly
+app/services/ — business logic
+File / Folder
+Purpose
+Notes
+health_score.py
+Computes the 0–100 Vehicle Health Score from the latest reading
+Server-side version of the frontend's placeholder logic
+alert_engine.py
+Runs threshold rules (e.g. temp > 110°C) and creates/clears fault records
+Called every time a new reading arrives
+notifications.py
+Sends SMS via Twilio and push notifications via Firebase FCM
+Triggered by alert_engine.py when a critical fault fires
+broadcast.py
+Manages the pool of open WebSocket connections and pushes updates to all of them
+Uses Redis pub/sub so multiple backend instances stay in sync
+app/auth/
+File / Folder
+Purpose
+Notes
+jwt_handler.py
+Creates and verifies JWT tokens
+dependencies.py
+FastAPI dependency that reads the token and identifies the current user
+Used with Depends() on protected routes
+app/tests/
+File / Folder
+Purpose
+Notes
+test_telemetry.py
+Tests the ingest endpoint and history queries
+pytest
+test_alerts.py
+Tests that alert_engine.py fires and clears faults correctly
+pytest
+4. Folder Structure — ECU Simulator
+ecu-simulator/
+├── simulate.py
+├── requirements.txt
+└── .env.example
+File / Folder
+Purpose
+Notes
+simulate.py
+Generates realistic speed/RPM/temp/battery/GPS data and POSTs it to the backend every 500ms
+~30–50 lines; unblocks every other team immediately
+requirements.txt
+Just the requests library (or websockets, if simulating a raw socket feed)
+.env.example
+Backend URL the simulator should POST to
+BACKEND_URL=http://localhost:8000/api/telemetry
+5. Contract Between Frontend & Backend
+These are the exact shapes the frontend already expects — match them and no frontend code needs to change:
+WebSocket ws://<host>/ws/telemetry sends frames like {"type": "reading", "data": {...}}, {"type": "fault", "data": {...}}, and {"type": "fault-clear", "data": {"id": "..."}}
+GET /api/telemetry/history?range=1h|24h|7d returns a list of {timestamp, engineTempC, batteryVoltage, rpm}
+GET /api/trips returns a list of {tripId, distanceKm, avgSpeedKph, idleMinutes, fuelUsedLiters, startedAt, endedAt}
+Field names are camelCase to match the frontend's TypeScript types directly — no renaming needed on either side
+6. Suggested Build Order
+1. ecu-simulator/simulate.py — get fake data flowing (30 min)
+2. app/models + app/database.py + one POST endpoint — save readings to PostgreSQL (1 hr)
+3. app/routers/websocket.py + app/services/broadcast.py — push live data to the dashboard (1 hr)
+4. app/services/health_score.py + alert_engine.py — compute score, fire faults (45 min)
+5. app/routers/telemetry.py history endpoint + app/routers/trips.py — power the charts & trip summary (1 hr)
+6. app/services/notifications.py — wire up Twilio SMS (30 min)
+7. app/auth/ + app/routers/auth.py — add login if there's time left

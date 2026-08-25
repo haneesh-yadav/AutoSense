@@ -1,0 +1,51 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  /* Surfaces */
+  --color-base: #0A0E14;
+  --color-panel: #12171F;
+  --color-panel-raised: #1A212C;
+  --color-line: #232B38;
+
+  /* Text */
+  --color-text-primary: #E8ECF2;
+  --color-text-muted: #7C8797;
+  --color-text-faint: #4A5568;
+
+  /* Signal colors */
+  --color-signal-good: #3DDC97;
+  --color-signal-data: #4FA8FF;
+  --color-signal-warn: #FFB020;
+  --color-signal-critical: #FF4757;
+
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  --font-body: "Inter", sans-serif;
+}
+
+body {
+  background-color: var(--color-base);
+  color: var(--color-text-primary);
+  font-family: var(--font-body);
+  background-image:
+    radial-gradient(circle at 15% 10%, rgba(79, 168, 255, 0.05), transparent 40%),
+    radial-gradient(circle at 85% 90%, rgba(61, 220, 151, 0.04), transparent 40%);
+}
+
+@keyframes needle-sweep {
+  0% { transform: rotate(-124deg); }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px;
+}
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: var(--color-line);
+  border-radius: 4px;
+}
